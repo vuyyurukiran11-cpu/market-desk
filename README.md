@@ -1,4 +1,4 @@
-# Market Desk prototype
+# Market Desk
 
 Run `npm start`, then open `http://localhost:3000` in a browser.
 

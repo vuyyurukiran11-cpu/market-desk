@@ -16,7 +16,7 @@ async function fetchJson(url) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { "User-Agent": "Mozilla/5.0 local-stock-dashboard/0.1", Accept: "application/json" }
+      headers: { "User-Agent": "Mozilla/5.0 market-desk/0.1", Accept: "application/json" }
     });
     if (!response.ok) throw new Error(`Yahoo Finance returned ${response.status}`);
     return await response.json();
