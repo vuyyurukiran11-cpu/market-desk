@@ -2,4 +2,3 @@ node_modules/
 .env
 work/
 outputs/
-test-results

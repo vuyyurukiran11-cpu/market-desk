@@ -1,10 +1,10 @@
 {
-  "name": "market-desk",
+  "name": "market",
   "private": true,
   "version": "0.1.0",
   "scripts": {
     "open": "node open.js",
-    "start": "node server.js",
+    "start": "node src/server.js",
     "test": "node --test"
   }
 }
