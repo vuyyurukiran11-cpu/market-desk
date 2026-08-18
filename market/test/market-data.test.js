@@ -36,13 +36,16 @@ test("quote summaries do not remove points from canonical chart cache entries", 
 
 test("long-range chart defaults accept weekly and monthly intervals", async () => {
   const originalFetch = global.fetch;
-  global.fetch = async () => ({
+  const requests = [];
+  global.fetch = async (url) => { requests.push(url); return {
     ok: true,
     json: async () => ({ chart: { result: [{ meta: { symbol: "RANGE", regularMarketPrice: 12 }, timestamp: [100], indicators: { quote: [{ close: [12] }] } }] } })
-  });
+  }; };
   try {
     await assert.doesNotReject(() => getChart("RANGE", "5Y"));
     await assert.doesNotReject(() => getChart("RANGE", "ALL"));
+    assert.match(requests[0], /interval=1wk/);
+    assert.match(requests[1], /interval=1mo/);
   } finally {
     global.fetch = originalFetch;
   }

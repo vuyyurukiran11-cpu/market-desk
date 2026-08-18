@@ -92,3 +92,16 @@ test("holdings API rejects malformed JSON and unknown API routes", async (t) => 
   assert.equal(malformed, 400);
   assert.equal((await request(port, "/api/unknown")).status, 404);
 });
+
+test("server rejects invalid persisted holding records", async (t) => {
+  const dataDir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "market-invalid-holdings-"));
+  const holdingsFile = path.join(dataDir, "holdings.json");
+  fs.writeFileSync(holdingsFile, JSON.stringify([{ symbol: "TSLA", quantity: "2", purchasePrice: 300, currency: "USD" }]));
+  const server = fork("src/server.js", [], { env: { ...process.env, HOLDINGS_FILE: holdingsFile, PORT: "0" }, silent: true });
+  t.after(() => { server.kill(); fs.rmSync(dataDir, { force: true, recursive: true }); });
+  const result = await Promise.race([
+    new Promise((resolve) => server.once("exit", (code) => resolve(code))),
+    new Promise((resolve) => setTimeout(() => resolve("timeout"), 3_000))
+  ]);
+  assert.equal(result, 1);
+});

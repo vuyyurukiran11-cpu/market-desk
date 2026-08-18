@@ -134,7 +134,9 @@ function bindSearch() {
 
 const chartTypes = ["Line", "Candle", "Bar", "Mountain", "Baseline", "Step", "Baseline delta"];
 const chartRanges = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "5Y", "All"];
-const chartIntervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d"];
+const chartIntervalDefaults = { "1D":"5m", "5D":"15m", "1M":"1h", "3M":"1d", "6M":"1d", "YTD":"1d", "1Y":"1d", "5Y":"1wk", "All":"1mo" };
+const chartIntervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "1wk", "1mo"];
+const intradayIntervals = new Set(["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"]);
 function chartSvg(points, type = "Candle", expanded = false) {
   if (!points.length) return `<div class="chart-empty">No chart data available.</div>`;
   const width = expanded ? 1400 : 800, height = expanded ? 620 : 330, pad = expanded ? 42 : 24;
@@ -153,17 +155,24 @@ function chartSvg(points, type = "Candle", expanded = false) {
   return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(type)} price chart"><line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#dce4e7"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#dce4e7"/>${content}<text x="${pad}" y="18" fill="#667680" font-size="13">${money(max)}</text><text x="${pad}" y="${height - 4}" fill="#667680" font-size="13">${money(min)}</text></svg>`;
 }
 function chartQuery(symbol, range, interval) { const query = new URLSearchParams({ symbol, range }); if (interval) query.set("interval", interval); return `/api/chart?${query}`; }
-function validChartRange(range, interval) { if (["1D", "5D", "1M"].includes(range) || interval === "1d") return { range, notice: "" }; return { range: "1D", notice: `${interval} data is intraday; switched to 1D.` }; }
+function validChartRange(range, interval) { if (["1D", "5D", "1M"].includes(range) || !intradayIntervals.has(interval)) return { range, notice: "" }; return { range: "1D", notice: `${interval} data is intraday; switched to 1D.` }; }
 let chartReturnFocus = null;
+let chartRequestGeneration = 0;
 function closeChartOverlay(restoreFocus = true) {
-  document.querySelector(".chart-overlay")?.remove();
+  const overlay = document.querySelector(".chart-overlay");
+  if (!overlay) return;
+  chartRequestGeneration += 1;
+  overlay.remove();
   document.body.classList.remove("chart-open");
-  const target = chartReturnFocus;
-  chartReturnFocus = null;
-  if (restoreFocus && target?.isConnected) target.focus();
+  if (restoreFocus) {
+    const target = chartReturnFocus;
+    chartReturnFocus = null;
+    if (target?.isConnected) target.focus();
+  }
 }
 function showChartNotice(overlay, message) { let notice = overlay.querySelector(".chart-notice"); if (!notice) { notice = document.createElement("div"); notice.className = "chart-notice"; overlay.querySelector(".chart-overlay-plot").before(notice); } notice.textContent = message; }
 async function renderExpandedChart(symbol, quote, state) {
+  ++chartRequestGeneration;
   if (!chartReturnFocus) {
     const active = document.activeElement;
     chartReturnFocus = active instanceof HTMLElement ? active : null;
@@ -185,10 +194,11 @@ async function renderExpandedChart(symbol, quote, state) {
   overlay.querySelector("[data-chart-close]").focus();
   overlay.querySelector("[data-chart-close]").onclick = closeChartOverlay;
   overlay.querySelector("[data-chart-type]").onchange = (event) => { state.type = event.target.value; renderExpandedChart(symbol, quote, state); };
-  overlay.querySelector("[data-chart-interval]").onchange = async (event) => { state.interval = event.target.value; const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range; try { const next = await api(chartQuery(symbol, state.range, state.interval)); closeChartOverlay(false); renderExpandedChart(symbol, next, state); } catch (error) { showChartNotice(overlay, error.message); } };
-  overlay.querySelectorAll("[data-chart-range]").forEach((button) => { button.onclick = async () => { state.range = button.dataset.chartRange; const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range; try { const next = await api(chartQuery(symbol, state.range, state.interval)); closeChartOverlay(false); renderExpandedChart(symbol, next, state); } catch (error) { showChartNotice(overlay, error.message); } }; });
+  overlay.querySelector("[data-chart-interval]").onchange = async (event) => { state.interval = event.target.value; const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range; const request = ++chartRequestGeneration; try { const next = await api(chartQuery(symbol, state.range, state.interval)); if (request !== chartRequestGeneration) return; closeChartOverlay(false); renderExpandedChart(symbol, next, state); } catch (error) { if (request === chartRequestGeneration) showChartNotice(overlay, error.message); } };
+  overlay.querySelectorAll("[data-chart-range]").forEach((button) => { button.onclick = async () => { state.range = button.dataset.chartRange; state.interval = chartIntervalDefaults[state.range]; const request = ++chartRequestGeneration; try { const next = await api(chartQuery(symbol, state.range, state.interval)); if (request !== chartRequestGeneration) return; closeChartOverlay(false); renderExpandedChart(symbol, next, state); } catch (error) { if (request === chartRequestGeneration) showChartNotice(overlay, error.message); } }; });
 }
 async function renderDetail(symbol, range = "1M", interval = null) {
+  interval = interval || chartIntervalDefaults[range] || "1d";
   clearInterval(quoteTimer); app.innerHTML = `<section class="page"><a href="#/" class="back">← Back to dashboard</a><div id="detail-loading" class="status" style="margin-top:22px">Loading ${escapeHtml(symbol)}…</div></section>`;
   try { const [quote, holdings] = await Promise.all([api(chartQuery(symbol, range, interval)), api("/api/holdings")]); setHoldingSymbols(holdings); const stale = !quote.timestamp || Date.now() - quote.timestamp > 120000; const state = { type: "Candle", range, interval: interval || ({ "1D":"5m", "5D":"15m", "1M":"1h" }[range] || "1d") }; app.innerHTML = `<section class="page"><a href="#/" class="back">← Back to dashboard</a><div class="detail-head"><div><div class="eyebrow">${escapeHtml(quote.exchange || "Market data")}</div><h1>${escapeHtml(quote.symbol)} <span class="muted">${escapeHtml(quote.name)}</span></h1><div class="status ${stale ? "warning" : ""}">${ageLabel(quote)} · ${escapeHtml(quote.source)} · received ${new Date(quote.receivedAt).toLocaleTimeString()}</div></div><div class="detail-price">${money(quote.price, quote.currency)}<small class="${quoteClass(quote)}">${quote.changePercent == null ? "Change unavailable" : `${quote.change >= 0 ? "+" : ""}${money(quote.change, quote.currency)} (${quote.changePercent.toFixed(2)}%)`}</small></div></div><div class="detail-layout"><section class="detail-card chart-card"><div class="chart-card-head"><h2>Price chart</h2><button class="expand-chart" data-expand-chart>Expand graph ↗</button></div><div class="chart-actions">${chartRanges.map((period) => `<button data-range="${period}" class="${period === range ? "active" : ""}">${period}</button>`).join("")}</div>${chartSvg(quote.points, state.type)}</section><aside class="detail-card details"><h2>Stock details</h2><dl class="facts"><div><dt>Currency</dt><dd>${escapeHtml(quote.currency || "—")}</dd></div><div><dt>Market state</dt><dd>${escapeHtml(quote.marketState || "—")}</dd></div><div><dt>Open</dt><dd>${money(quote.open, quote.currency)}</dd></div><div><dt>Day range</dt><dd>${money(quote.dayLow, quote.currency)} – ${money(quote.dayHigh, quote.currency)}</dd></div><div><dt>Volume</dt><dd>${number(quote.volume)}</dd></div></dl></aside></div><section class="detail-card v2"><h2>AI analysis <span class="warning">V2</span></h2><p>Recommendations are intentionally unavailable in this prototype.</p></section><section class="detail-card v2"><h2>News <span class="warning">V2</span></h2><p>News and sentiment sources will be chosen separately.</p></section></section>`; document.querySelector("[data-expand-chart]").onclick = () => renderExpandedChart(symbol, quote, state); document.querySelectorAll("[data-range]").forEach((button) => button.addEventListener("click", () => renderDetail(symbol, button.dataset.range, state.interval))); } catch (error) { app.innerHTML = `<section class="page"><a href="#/" class="back">← Back to dashboard</a><div class="error" style="margin-top:22px"><b>${escapeHtml(symbol)}</b> could not be loaded. ${escapeHtml(error.message)}<br><small>This Yahoo Finance prototype does not guarantee data availability or freshness.</small></div></section>`; }
 }

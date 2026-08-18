@@ -19,7 +19,8 @@ const defaultHoldings = [
   { symbol: "XIU.TO", quantity: 20, purchasePrice: 37.18, currency: "CAD" }
 ];
 let holdings = fs.existsSync(holdingsFile) ? JSON.parse(fs.readFileSync(holdingsFile, "utf8")) : defaultHoldings;
-if (!Array.isArray(holdings)) throw new Error(`${holdingsFile} must contain a JSON array`);
+const validHolding = (holding) => holding && typeof holding.symbol === "string" && /^[A-Z0-9.=^-]{1,20}$/.test(holding.symbol) && Number.isInteger(holding.quantity) && holding.quantity > 0 && (holding.purchasePrice === null || (typeof holding.purchasePrice === "number" && Number.isFinite(holding.purchasePrice) && holding.purchasePrice >= 0)) && ["CAD", "USD"].includes(holding.currency);
+if (!Array.isArray(holdings) || !holdings.every(validHolding)) throw new Error(`${holdingsFile} contains invalid holdings data`);
 
 function saveHoldings(candidate) {
   fs.mkdirSync(path.dirname(holdingsFile), { recursive: true });
