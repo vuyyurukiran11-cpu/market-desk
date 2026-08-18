@@ -2,8 +2,13 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { getChart, getQuotes, searchSymbols } = require("./market-data");
+const { createSessionTracker } = require("./session-tracker");
 
 const publicDir = path.join(__dirname, "public");
+const sessions = createSessionTracker();
+const autoStop = process.env.AUTO_STOP === "1";
+const maxSessionIdLength = 128;
+const isLoopback = (address) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 const holdings = [
   { symbol: "AAPL", quantity: 12, costBasis: 185.20, currency: "USD" },
   { symbol: "MSFT", quantity: 6, costBasis: 412.75, currency: "USD" },
@@ -25,7 +30,7 @@ const serveFile = (res, pathname) => {
   send(res, 200, fs.readFileSync(file), types[path.extname(file)] || "application/octet-stream");
 };
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   try {
     if (url.pathname === "/api/search") {
@@ -38,12 +43,28 @@ http.createServer(async (req, res) => {
       return send(res, 200, await getChart(url.searchParams.get("symbol") || "", url.searchParams.get("range") || "1M"));
     }
     if (url.pathname === "/api/holdings") return send(res, 200, holdings);
+    if (url.pathname === "/api/session" && req.method === "POST") {
+      const id = url.searchParams.get("id");
+      if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
+        return send(res, 403, { error: "Session updates must come from this browser" });
+      }
+      if (!id || id.length > maxSessionIdLength) return send(res, 400, { error: "Invalid session id" });
+      if (url.searchParams.get("close") === "1") sessions.remove(id);
+      else sessions.touch(id);
+      return send(res, 204, "");
+    }
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Unknown API route" });
     return serveFile(res, url.pathname);
   } catch (error) {
     const status = error.name === "ValidationError" ? 400 : 502;
     return send(res, status, { error: error.message, source: "Yahoo Finance prototype" });
   }
-}).listen(process.env.PORT || 3000, () => {
-  console.log(`Stock dashboard: http://localhost:${process.env.PORT || 3000}`);
 });
+
+server.listen(process.env.PORT || 3000, () => {
+  const { port } = server.address();
+  console.log(`Stock dashboard: http://localhost:${port}`);
+  process.send?.({ type: "listening", port });
+});
+
+if (autoStop) setInterval(() => { if (sessions.seen() && !sessions.active()) server.close(); }, 5_000).unref();
