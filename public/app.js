@@ -5,6 +5,15 @@ const groups = [
   ["Metals", ["GC=F", "SI=F", "PL=F"]]
 ];
 let quoteTimer;
+const sessionId = crypto.randomUUID();
+
+function keepServerAlive() {
+  fetch(`/api/session?id=${encodeURIComponent(sessionId)}`, { method: "POST", keepalive: true }).catch(() => {});
+}
+
+keepServerAlive();
+setInterval(keepServerAlive, 10_000);
+addEventListener("pagehide", () => navigator.sendBeacon(`/api/session?id=${encodeURIComponent(sessionId)}&close=1`));
 
 const money = (value, currency = "") => Number.isFinite(value) ? new Intl.NumberFormat(undefined, { style:"currency", currency: currency || "USD", maximumFractionDigits:2 }).format(value) : "—";
 const number = (value) => Number.isFinite(value) ? new Intl.NumberFormat().format(value) : "—";
