@@ -71,7 +71,7 @@ const number = (value) => Number.isFinite(value) ? new Intl.NumberFormat().forma
 const escapeHtml = (text) => String(text || "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
 const api = async (path, options) => { const response = await fetch(path, { headers: options?.body ? { "Content-Type": "application/json" } : {}, ...options }); const body = response.status === 204 ? null : await response.json(); if (!response.ok) throw new Error(body?.error || "Request failed"); return body; };
 const quoteClass = (quote) => quote.change > 0 ? "positive" : quote.change < 0 ? "negative" : "muted";
-const ageLabel = (quote) => { const age = quote.timestamp ? Math.max(0, Date.now() - quote.timestamp) : Infinity; if (quote.error) return "Unavailable"; if (age > 120000) return "Stale / verify"; return `${quote.marketState ? `${quote.marketState} · ` : ""}updated ${quote.timestamp ? new Date(quote.timestamp).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "unknown"}`; };
+const ageLabel = (quote) => { const age = quote.timestamp ? Math.max(0, Date.now() - quote.timestamp) : Infinity; if (quote.error) return "Unavailable"; if (age > 120000) return "Stale / verify"; return `${quote.marketState ? `${escapeHtml(quote.marketState)} · ` : ""}updated ${quote.timestamp ? new Date(quote.timestamp).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "unknown"}`; };
 
 function quoteRows(quotes) {
   return quotes.map((quote) => quote.error ? `<div class="quote-row"><b>${escapeHtml(quote.symbol)}</b><small class="warning">Unavailable</small></div>` : `<a class="quote-row" href="#/stock/${encodeURIComponent(quote.symbol)}"><span><b>${escapeHtml(quote.symbol)}</b><small>${escapeHtml(quote.name)}</small></span><span class="${quoteClass(quote)}">${money(quote.price, quote.currency)}<small>${quote.changePercent == null ? "—" : `${quote.changePercent >= 0 ? "+" : ""}${quote.changePercent.toFixed(2)}%`}</small></span></a>`).join("");
@@ -154,17 +154,39 @@ function chartSvg(points, type = "Candle", expanded = false) {
 }
 function chartQuery(symbol, range, interval) { const query = new URLSearchParams({ symbol, range }); if (interval) query.set("interval", interval); return `/api/chart?${query}`; }
 function validChartRange(range, interval) { if (["1D", "5D", "1M"].includes(range) || interval === "1d") return { range, notice: "" }; return { range: "1D", notice: `${interval} data is intraday; switched to 1D.` }; }
-function closeChartOverlay() { document.querySelector(".chart-overlay")?.remove(); document.body.classList.remove("chart-open"); }
+let chartReturnFocus = null;
+function closeChartOverlay(restoreFocus = true) {
+  document.querySelector(".chart-overlay")?.remove();
+  document.body.classList.remove("chart-open");
+  const target = chartReturnFocus;
+  chartReturnFocus = null;
+  if (restoreFocus && target?.isConnected) target.focus();
+}
 function showChartNotice(overlay, message) { let notice = overlay.querySelector(".chart-notice"); if (!notice) { notice = document.createElement("div"); notice.className = "chart-notice"; overlay.querySelector(".chart-overlay-plot").before(notice); } notice.textContent = message; }
 async function renderExpandedChart(symbol, quote, state) {
+  if (!chartReturnFocus) {
+    const active = document.activeElement;
+    chartReturnFocus = active instanceof HTMLElement ? active : null;
+  }
   document.querySelector(".chart-overlay")?.remove();
   const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range;
   const overlay = document.createElement("div"); overlay.className = "chart-overlay"; overlay.innerHTML = `<div class="chart-overlay-card" role="dialog" aria-modal="true" aria-label="Expanded ${escapeHtml(symbol)} chart"><div class="chart-overlay-head"><div><div class="eyebrow">${escapeHtml(quote.exchange || "Market data")}</div><h2>${escapeHtml(symbol)} · ${escapeHtml(quote.name)}</h2><div class="status">${ageLabel(quote)}</div></div><button class="chart-close" data-chart-close aria-label="Close expanded chart">×</button></div><div class="chart-toolbar"><label>Chart type <select data-chart-type>${chartTypes.map((type) => `<option ${type === state.type ? "selected" : ""}>${type}</option>`).join("")}</select></label><div class="chart-menu">${chartRanges.map((range) => `<button data-chart-range="${range}" class="${range === state.range ? "active" : ""}">${range}</button>`).join("")}</div><label>Interval <select data-chart-interval>${chartIntervals.map((interval) => `<option value="${interval}" ${interval === state.interval ? "selected" : ""}>${interval}</option>`).join("")}</select></label></div>${adjusted.notice ? `<div class="chart-notice">${adjusted.notice}</div>` : ""}<div class="chart-overlay-plot">${chartSvg(quote.points, state.type, true)}</div></div>`;
   document.body.append(overlay); document.body.classList.add("chart-open");
+  const dialog = overlay.querySelector("[role=dialog]");
+  const focusable = () => [...dialog.querySelectorAll("button:not([disabled]), select, input, textarea, a[href], [tabindex]:not([tabindex='-1'])")];
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") return;
+    const controls = focusable();
+    if (!controls.length) { event.preventDefault(); return; }
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  overlay.querySelector("[data-chart-close]").focus();
   overlay.querySelector("[data-chart-close]").onclick = closeChartOverlay;
   overlay.querySelector("[data-chart-type]").onchange = (event) => { state.type = event.target.value; renderExpandedChart(symbol, quote, state); };
-  overlay.querySelector("[data-chart-interval]").onchange = async (event) => { state.interval = event.target.value; const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range; try { const next = await api(chartQuery(symbol, state.range, state.interval)); closeChartOverlay(); renderExpandedChart(symbol, next, state); } catch (error) { showChartNotice(overlay, error.message); } };
-  overlay.querySelectorAll("[data-chart-range]").forEach((button) => { button.onclick = async () => { state.range = button.dataset.chartRange; const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range; try { const next = await api(chartQuery(symbol, state.range, state.interval)); closeChartOverlay(); renderExpandedChart(symbol, next, state); } catch (error) { showChartNotice(overlay, error.message); } }; });
+  overlay.querySelector("[data-chart-interval]").onchange = async (event) => { state.interval = event.target.value; const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range; try { const next = await api(chartQuery(symbol, state.range, state.interval)); closeChartOverlay(false); renderExpandedChart(symbol, next, state); } catch (error) { showChartNotice(overlay, error.message); } };
+  overlay.querySelectorAll("[data-chart-range]").forEach((button) => { button.onclick = async () => { state.range = button.dataset.chartRange; const adjusted = validChartRange(state.range, state.interval); state.range = adjusted.range; try { const next = await api(chartQuery(symbol, state.range, state.interval)); closeChartOverlay(false); renderExpandedChart(symbol, next, state); } catch (error) { showChartNotice(overlay, error.message); } }; });
 }
 async function renderDetail(symbol, range = "1M", interval = null) {
   clearInterval(quoteTimer); app.innerHTML = `<section class="page"><a href="#/" class="back">← Back to dashboard</a><div id="detail-loading" class="status" style="margin-top:22px">Loading ${escapeHtml(symbol)}…</div></section>`;

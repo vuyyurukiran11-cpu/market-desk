@@ -37,4 +37,5 @@ th { white-space:nowrap; }
 .panel .quote-row:first-child { border-top:0; }
 .quote-sort { border:0; padding:0; background:transparent; color:var(--muted); font:inherit; font-size:.68rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
 .panel h2 .quote-sort { display:inline-flex; align-items:center; justify-content:flex-start; gap:6px; width:auto; color:var(--blue); font-size:.78rem; letter-spacing:.09em; text-align:left; }
-.quote-sort:hover,.quote-sort:focus-visible { color:var(--blue); outline:0; }
+.quote-sort:hover { color:var(--blue); }
+.quote-sort:focus-visible { color:var(--blue); outline:2px solid var(--blue); outline-offset:3px; }

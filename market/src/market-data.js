@@ -84,7 +84,7 @@ async function getChart(rawSymbol, period = "1M", requestedInterval = null) {
   const canonicalPeriod = RANGE[normalizedPeriod] ? normalizedPeriod : "1M";
   const [range, defaultInterval] = RANGE[canonicalPeriod];
   const interval = requestedInterval || defaultInterval;
-  if (!["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d"].includes(interval)) throw new ValidationError("Unsupported chart interval");
+  if (!["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "1wk", "1mo"].includes(interval)) throw new ValidationError("Unsupported chart interval");
   return cached(`chart:${symbol}:${canonicalPeriod}:${interval}`, 55_000, async () => {
     const payload = await fetchJson(`${YAHOO}/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`);
     const result = payload.chart?.result?.[0];

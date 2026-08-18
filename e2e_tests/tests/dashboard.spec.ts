@@ -40,6 +40,38 @@ marketTest('opens a stock detail view from a quote', async ({ dashboard, page })
   await expect(page.getByRole('heading', { name: 'Price chart' })).toBeVisible();
 });
 
+marketTest('keeps keyboard focus inside the expanded chart and restores it on close', async ({ dashboard, page }) => {
+  await page.route('**/api/chart**', (route) =>
+    route.fulfill({
+      json: {
+        change: 2,
+        changePercent: 1,
+        currency: 'USD',
+        exchange: 'NASDAQ',
+        marketState: 'REGULAR',
+        name: 'AAPL Incorporated',
+        points: [{ close: 190 }, { close: 200 }],
+        price: 200,
+        receivedAt: Date.now(),
+        source: 'test',
+        symbol: 'AAPL',
+        timestamp: Date.now(),
+      },
+    }),
+  );
+  await dashboard.open();
+  await dashboard.openQuote('AAPL');
+  const expand = page.locator('[data-expand-chart]');
+  await expand.click();
+
+  const close = page.locator('[data-chart-close]');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('[data-chart-interval]').last()).toBeFocused();
+  await close.click();
+  await expect(expand).toBeFocused();
+});
+
 marketTest('shows an existing holding as already held after a direct detail refresh', async ({ page }) => {
   await page.route('**/api/chart**', (route) =>
     route.fulfill({

@@ -67,6 +67,8 @@ test("holdings API supports listing, validation, merge, update, and delete", asy
   assert.equal(updated.status, 200);
   assert.equal(updated.body.quantity, 4);
   assert.equal(updated.body.purchasePrice, null);
+  const persistedUpdate = JSON.parse(fs.readFileSync(holdingsFile, "utf8")).find(({ symbol }) => symbol === "TSLA");
+  assert.deepEqual(persistedUpdate, { symbol: "TSLA", quantity: 4, purchasePrice: null, currency: "CAD" });
 
   assert.equal((await request(port, "/api/holdings/%E0%A4%A", { method: "PATCH", body: { quantity: 1 } })).status, 400);
   assert.equal((await request(port, "/api/holdings/%E0%A4%A", { method: "DELETE" })).status, 400);
