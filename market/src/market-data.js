@@ -5,8 +5,12 @@ const RANGE = {
   "1D": ["1d", "5m"],
   "5D": ["5d", "15m"],
   "1M": ["1mo", "1h"],
+  "3M": ["3mo", "1d"],
   "6M": ["6mo", "1d"],
-  "1Y": ["1y", "1d"]
+  "YTD": ["ytd", "1d"],
+  "1Y": ["1y", "1d"],
+  "5Y": ["5y", "1wk"],
+  "ALL": ["max", "1mo"]
 };
 
 class ValidationError extends Error {}
@@ -49,7 +53,7 @@ function normaliseChart(result, symbol) {
   const meta = result.meta || {};
   const quote = result.indicators?.quote?.[0] || {};
   const timestamps = result.timestamp || [];
-  const points = timestamps.map((time, index) => ({ time: time * 1000, close: quote.close?.[index] })).filter((point) => Number.isFinite(point.close));
+  const points = timestamps.map((time, index) => ({ time: time * 1000, open: quote.open?.[index], high: quote.high?.[index], low: quote.low?.[index], close: quote.close?.[index] })).filter((point) => Number.isFinite(point.close));
   if (!meta.symbol || !points.length) throw new Error(`No market data is available for ${symbol}`);
   const timestamp = Number(meta.regularMarketTime || timestamps.at(-1)) * 1000;
   return {
@@ -57,7 +61,7 @@ function normaliseChart(result, symbol) {
     name: meta.longName || meta.shortName || meta.symbol,
     currency: meta.currency || "",
     exchange: meta.fullExchangeName || meta.exchangeName || "",
-    marketState: meta.marketState || "UNKNOWN",
+    marketState: meta.marketState || null,
     price: meta.regularMarketPrice ?? points.at(-1).close,
     previousClose: meta.previousClose ?? meta.chartPreviousClose ?? null,
     change: meta.regularMarketPrice != null && meta.previousClose != null ? meta.regularMarketPrice - meta.previousClose : null,
@@ -73,12 +77,15 @@ function normaliseChart(result, symbol) {
   };
 }
 
-async function getChart(rawSymbol, period = "1M") {
+async function getChart(rawSymbol, period = "1M", requestedInterval = null) {
   const symbol = validSymbol(rawSymbol);
+  if (period === "1m" || period === "5m") { requestedInterval = period; period = "1D"; }
   const normalizedPeriod = String(period).trim().toUpperCase();
   const canonicalPeriod = RANGE[normalizedPeriod] ? normalizedPeriod : "1M";
-  const [range, interval] = RANGE[canonicalPeriod];
-  return cached(`chart:${symbol}:${canonicalPeriod}`, 55_000, async () => {
+  const [range, defaultInterval] = RANGE[canonicalPeriod];
+  const interval = requestedInterval || defaultInterval;
+  if (!["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "1wk", "1mo"].includes(interval)) throw new ValidationError("Unsupported chart interval");
+  return cached(`chart:${symbol}:${canonicalPeriod}:${interval}`, 55_000, async () => {
     const payload = await fetchJson(`${YAHOO}/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`);
     const result = payload.chart?.result?.[0];
     if (!result) throw new Error(payload.chart?.error?.description || `No market data is available for ${symbol}`);
