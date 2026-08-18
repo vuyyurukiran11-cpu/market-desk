@@ -1,7 +1,8 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
-const { getChart, getQuotes, searchSymbols } = require("./market-data");
+const { marketDataProvider } = require("./market-data");
+const { getChart, getNews, getQuotes, searchSymbols } = marketDataProvider;
 const { createSessionTracker } = require("./session-tracker");
 
 const publicDir = path.join(__dirname, "..", "public");
@@ -59,7 +60,12 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, await getQuotes((url.searchParams.get("symbols") || "").split(",").filter(Boolean)));
     }
     if (url.pathname === "/api/chart") {
-      return send(res, 200, await getChart(url.searchParams.get("symbol") || "", url.searchParams.get("range") || "1M", url.searchParams.get("interval")));
+      const extendedHours = url.searchParams.get("extendedHours") || "0";
+      if (!["0", "1"].includes(extendedHours)) return send(res, 400, { error:"extendedHours must be 0 or 1" });
+      return send(res, 200, await getChart(url.searchParams.get("symbol") || "", url.searchParams.get("range") || "1M", url.searchParams.get("interval"), extendedHours === "1"));
+    }
+    if (url.pathname === "/api/news") {
+      return send(res, 200, await getNews(url.searchParams.get("symbol") || ""));
     }
     if (url.pathname === "/api/session" && req.method === "POST") {
       const id = url.searchParams.get("id");
