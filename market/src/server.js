@@ -8,6 +8,8 @@ const publicDir = path.join(__dirname, "..", "public");
 const sessions = createSessionTracker();
 const autoStop = process.env.AUTO_STOP === "1";
 const maxSessionIdLength = 128;
+class InvalidJsonError extends Error {}
+class OversizedBodyError extends Error {}
 const isLoopback = (address) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 const holdings = [
   { symbol: "AAPL", quantity: 12, purchasePrice: 185.20, currency: "USD" },
@@ -64,9 +66,10 @@ const server = http.createServer(async (req, res) => {
       }
       const body = await readJson(req), symbol = String(body.symbol || "").trim().toUpperCase(), quantity = Number(body.quantity), purchasePrice = body.purchasePrice == null || body.purchasePrice === "" ? null : Number(body.purchasePrice);
       if (!/^[A-Z0-9.=^-]{1,20}$/.test(symbol) || !Number.isInteger(quantity) || quantity < 1 || (purchasePrice != null && (!Number.isFinite(purchasePrice) || purchasePrice < 0))) return send(res, 400, { error: "Enter a valid ticker, whole-number quantity, and non-negative purchase price" });
+      if (body.currency !== undefined && !["CAD", "USD"].includes(body.currency)) return send(res, 400, { error: "Currency must be CAD or USD" });
       const existing = holdings.find((holding) => holding.symbol === symbol);
       if (existing) { existing.quantity += quantity; return send(res, 200, existing); }
-      holdings.push({ symbol, quantity, purchasePrice, currency: body.currency === "CAD" ? "CAD" : "USD" });
+      holdings.push({ symbol, quantity, purchasePrice, currency: body.currency ?? "USD" });
       return send(res, 201, holdings.at(-1));
     }
     const holdingMatch = url.pathname.match(/^\/api\/holdings\/([^/]+)$/);
@@ -90,7 +93,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Unknown API route" });
     return serveFile(res, url.pathname);
   } catch (error) {
-    const status = error.name === "ValidationError" ? 400 : error.name === "OversizedError" ? 413 : 502;
+    const status = error.name === "ValidationError" || error instanceof InvalidJsonError ? 400 : error instanceof OversizedBodyError ? 413 : 502;
     return send(res, status, { error: error.message, source: "Yahoo Finance prototype" });
   }
 });
@@ -101,4 +104,4 @@ server.listen(process.env.PORT || 3000, () => {
 });
 
 if (autoStop) setInterval(() => { if (sessions.seen() && !sessions.active()) server.close(); }, 5_000).unref();
-function readJson(req) { return new Promise((resolve, reject) => { let data = ""; let stopped = false; req.on("data", (chunk) => { if (stopped) return; data += chunk; if (data.length > 10_000) { stopped = true; const error = new Error("Request is too large"); error.name = "OversizedError"; reject(error); } }); req.on("end", () => { if (stopped) return; try { resolve(JSON.parse(data || "{}")); } catch { const error = new Error("Invalid JSON"); error.name = "ValidationError"; reject(error); } }); req.on("error", reject); }); }
+function readJson(req) { return new Promise((resolve, reject) => { let data = ""; let stopped = false; req.on("data", (chunk) => { if (stopped) return; data += chunk; if (data.length > 10_000) { stopped = true; data = ""; reject(new OversizedBodyError("Request is too large")); } }); req.on("end", () => { if (stopped) return; try { resolve(JSON.parse(data || "{}")); } catch { reject(new InvalidJsonError("Invalid JSON")); } }); req.on("error", reject); }); }

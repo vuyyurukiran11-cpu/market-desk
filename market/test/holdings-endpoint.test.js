@@ -43,6 +43,9 @@ test("holdings API supports listing, validation, merge, update, and delete", asy
   const invalid = await request(port, "/api/holdings", { method: "POST", body: { symbol: "bad symbol", quantity: 1 } });
   assert.equal(invalid.status, 400);
 
+  const invalidCurrency = await request(port, "/api/holdings", { method: "POST", body: { symbol: "TSLA", quantity: 1, currency: "EUR" } });
+  assert.equal(invalidCurrency.status, 400);
+
   const added = await request(port, "/api/holdings", { method: "POST", body: { symbol: "TSLA", quantity: 2, purchasePrice: 300, currency: "CAD" } });
   assert.equal(added.status, 201);
   assert.deepEqual(added.body, { symbol: "TSLA", quantity: 2, purchasePrice: 300, currency: "CAD" });

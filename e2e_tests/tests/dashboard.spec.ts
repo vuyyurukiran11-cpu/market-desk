@@ -74,7 +74,15 @@ marketTest(
     });
     await page.route('**/api/session**', (route) => route.fulfill({ body: '', status: 204 }));
     await dashboard.open();
-    await expect(dashboard.page.locator('#holding-filter')).toHaveCount(0);
+
+    const filter = dashboard.page.locator('#holding-filter');
+
+    await expect(filter).toBeVisible();
+
+    await filter.fill('ms');
+    await expect(dashboard.elements.holdingsBody.locator('tr')).toHaveCount(1);
+    await expect(dashboard.elements.holdingsBody.locator('tr')).toHaveAttribute('data-symbol', 'MSFT');
+    await filter.fill('');
 
     const status = dashboard.page.locator('#holding-status');
 
@@ -87,13 +95,13 @@ marketTest(
 
     const firstRowBefore = dashboard.elements.holdingsBody.locator('tr').first();
 
-    await expect(firstRowBefore).toHaveAttribute('data-symbol', 'MSFT');
+    await expect(firstRowBefore).toHaveAttribute('data-symbol', 'AAPL');
 
     await ticker.click();
     await expect(ticker).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
     const firstRowAfter = dashboard.elements.holdingsBody.locator('tr').first();
 
-    await expect(firstRowAfter).toHaveAttribute('data-symbol', 'AAPL');
+    await expect(firstRowAfter).toHaveAttribute('data-symbol', 'MSFT');
   },
 );
