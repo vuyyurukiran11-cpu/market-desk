@@ -8,7 +8,7 @@ function request(port, path, { method = "GET", body } = {}) {
     const payload = body == null ? "" : JSON.stringify(body);
     const req = http.request({
       host: "127.0.0.1", port, path, method,
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) }
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), "Origin": `http://127.0.0.1:${port}` }
     }, (res) => {
       let data = "";
       res.setEncoding("utf8");
@@ -48,7 +48,7 @@ test("holdings API supports listing, validation, merge, update, and delete", asy
   assert.deepEqual(added.body, { symbol: "TSLA", quantity: 2, purchasePrice: 300, currency: "CAD" });
 
   const merged = await request(port, "/api/holdings", { method: "POST", body: { symbol: "TSLA", quantity: 3 } });
-  assert.equal(merged.status, 201);
+  assert.equal(merged.status, 200);
   assert.equal(merged.body.quantity, 5);
 
   const updated = await request(port, "/api/holdings/TSLA", { method: "PATCH", body: { quantity: 4, purchasePrice: null } });
@@ -64,13 +64,13 @@ test("holdings API supports listing, validation, merge, update, and delete", asy
 test("holdings API rejects malformed JSON and unknown API routes", async (t) => {
   const port = await startServer(t);
   const malformed = await new Promise((resolve, reject) => {
-    const req = http.request({ host: "127.0.0.1", port, path: "/api/holdings", method: "POST", headers: { "Content-Type": "application/json" } }, (res) => {
+    const req = http.request({ host: "127.0.0.1", port, path: "/api/holdings", method: "POST", headers: { "Content-Type": "application/json", "Origin": `http://127.0.0.1:${port}` } }, (res) => {
       res.resume();
       res.on("end", () => resolve(res.statusCode));
     });
     req.on("error", reject);
     req.end("{not json");
   });
-  assert.equal(malformed, 502);
+  assert.equal(malformed, 400);
   assert.equal((await request(port, "/api/unknown")).status, 404);
 });

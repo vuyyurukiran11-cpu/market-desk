@@ -52,28 +52,45 @@ const server = http.createServer(async (req, res) => {
       else sessions.touch(id);
       return send(res, 204, "");
     }
-    if (url.pathname === "/api/holdings" && req.method === "GET") return send(res, 200, holdings);
+    if (url.pathname === "/api/holdings" && req.method === "GET") {
+      if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
+        return send(res, 403, { error: "Session updates must come from this browser" });
+      }
+      return send(res, 200, holdings);
+    }
     if (url.pathname === "/api/holdings" && req.method === "POST") {
+      if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
+        return send(res, 403, { error: "Session updates must come from this browser" });
+      }
       const body = await readJson(req), symbol = String(body.symbol || "").trim().toUpperCase(), quantity = Number(body.quantity), purchasePrice = body.purchasePrice == null || body.purchasePrice === "" ? null : Number(body.purchasePrice);
       if (!/^[A-Z0-9.=^-]{1,20}$/.test(symbol) || !Number.isInteger(quantity) || quantity < 1 || (purchasePrice != null && (!Number.isFinite(purchasePrice) || purchasePrice < 0))) return send(res, 400, { error: "Enter a valid ticker, whole-number quantity, and non-negative purchase price" });
       const existing = holdings.find((holding) => holding.symbol === symbol);
-      if (existing) existing.quantity += quantity; else holdings.push({ symbol, quantity, purchasePrice, currency: body.currency === "CAD" ? "CAD" : "USD" });
-      return send(res, 201, existing || holdings.at(-1));
+      if (existing) { existing.quantity += quantity; return send(res, 200, existing); }
+      holdings.push({ symbol, quantity, purchasePrice, currency: body.currency === "CAD" ? "CAD" : "USD" });
+      return send(res, 201, holdings.at(-1));
     }
     const holdingMatch = url.pathname.match(/^\/api\/holdings\/([^/]+)$/);
     if (holdingMatch && req.method === "PATCH") {
-      const holding = holdings.find((item) => item.symbol === decodeURIComponent(holdingMatch[1]).toUpperCase()), body = await readJson(req), quantity = Number(body.quantity);
-      if (!holding || !Number.isInteger(quantity) || quantity < 1 || (body.purchasePrice != null && (!Number.isFinite(Number(body.purchasePrice)) || Number(body.purchasePrice) < 0))) return send(res, 400, { error: "Holding or quantity is invalid" });
+      if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
+        return send(res, 403, { error: "Session updates must come from this browser" });
+      }
+      const holding = holdings.find((item) => item.symbol === decodeURIComponent(holdingMatch[1]).toUpperCase());
+      if (!holding) return send(res, 404, { error: "Holding not found" });
+      const body = await readJson(req), quantity = Number(body.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1 || (body.purchasePrice != null && (!Number.isFinite(Number(body.purchasePrice)) || Number(body.purchasePrice) < 0))) return send(res, 400, { error: "Holding or quantity is invalid" });
       holding.quantity = quantity; if (body.purchasePrice !== undefined) holding.purchasePrice = body.purchasePrice === null || body.purchasePrice === "" ? null : Number(body.purchasePrice); return send(res, 200, holding);
     }
     if (holdingMatch && req.method === "DELETE") {
+      if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
+        return send(res, 403, { error: "Session updates must come from this browser" });
+      }
       const index = holdings.findIndex((item) => item.symbol === decodeURIComponent(holdingMatch[1]).toUpperCase());
       if (index < 0) return send(res, 404, { error: "Holding not found" }); holdings.splice(index, 1); return send(res, 204, "");
     }
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Unknown API route" });
     return serveFile(res, url.pathname);
   } catch (error) {
-    const status = error.name === "ValidationError" ? 400 : 502;
+    const status = error.name === "ValidationError" ? 400 : error.name === "OversizedError" ? 413 : 502;
     return send(res, status, { error: error.message, source: "Yahoo Finance prototype" });
   }
 });
@@ -84,4 +101,4 @@ server.listen(process.env.PORT || 3000, () => {
 });
 
 if (autoStop) setInterval(() => { if (sessions.seen() && !sessions.active()) server.close(); }, 5_000).unref();
-function readJson(req) { return new Promise((resolve, reject) => { let data = ""; req.on("data", (chunk) => { data += chunk; if (data.length > 10_000) reject(new Error("Request is too large")); }); req.on("end", () => { try { resolve(JSON.parse(data || "{}")); } catch { reject(new Error("Invalid JSON")); } }); req.on("error", reject); }); }
+function readJson(req) { return new Promise((resolve, reject) => { let data = ""; let stopped = false; req.on("data", (chunk) => { if (stopped) return; data += chunk; if (data.length > 10_000) { stopped = true; const error = new Error("Request is too large"); error.name = "OversizedError"; reject(error); } }); req.on("end", () => { if (stopped) return; try { resolve(JSON.parse(data || "{}")); } catch { const error = new Error("Invalid JSON"); error.name = "ValidationError"; reject(error); } }); req.on("error", reject); }); }

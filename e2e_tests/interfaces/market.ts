@@ -1,7 +1,7 @@
 export interface Holding {
   symbol: string;
   quantity: number;
-  purchasePrice: number;
+  purchasePrice: number | null;
   currency: string;
 }
 export interface Quote {

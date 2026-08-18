@@ -47,18 +47,53 @@ marketTest('shows the holding delete icon on hover and keyboard focus', async ({
   await expect(remove.locator('svg')).toBeVisible();
 });
 
-marketTest('keeps the status filter and sortable headers in the holdings header', async ({ dashboard }) => {
-  await dashboard.open();
-  await expect(dashboard.page.locator('#holding-filter')).toHaveCount(0);
+marketTest(
+  'keeps the status filter and sortable headers in the holdings header',
+  async ({ dashboard, page }) => {
+    const holdings = [
+      { currency: 'USD', purchasePrice: 100, quantity: 5, symbol: 'MSFT' },
+      { currency: 'USD', purchasePrice: 185.2, quantity: 12, symbol: 'AAPL' },
+    ];
 
-  const status = dashboard.page.locator('#holding-status');
+    await page.route('**/api/holdings', (route) => route.fulfill({ json: holdings }));
+    await page.route('**/api/quotes**', async (route) => {
+      const symbols = new URL(route.request().url()).searchParams.get('symbols')?.split(',') ?? [];
 
-  await expect(status).toBeVisible();
-  await expect(status.locator("xpath=ancestor::div[contains(@class, 'holding-filters')]")).toBeVisible();
+      await route.fulfill({
+        json: symbols.map((symbol) => ({
+          change: 2,
+          changePercent: 1,
+          currency: 'USD',
+          marketState: 'REGULAR',
+          name: `${symbol} Incorporated`,
+          price: 200,
+          symbol,
+          timestamp: Date.now(),
+        })),
+      });
+    });
+    await page.route('**/api/session**', (route) => route.fulfill({ body: '', status: 204 }));
+    await dashboard.open();
+    await expect(dashboard.page.locator('#holding-filter')).toHaveCount(0);
 
-  const ticker = dashboard.buttons.tickerSort;
+    const status = dashboard.page.locator('#holding-status');
 
-  await expect(ticker).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await ticker.click();
-  await expect(ticker).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-});
+    await expect(status).toBeVisible();
+    await expect(status.locator("xpath=ancestor::div[contains(@class, 'holding-filters')]")).toBeVisible();
+
+    const ticker = dashboard.buttons.tickerSort;
+
+    await expect(ticker).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+    const firstRowBefore = dashboard.elements.holdingsBody.locator('tr').first();
+
+    await expect(firstRowBefore).toHaveAttribute('data-symbol', 'MSFT');
+
+    await ticker.click();
+    await expect(ticker).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+    const firstRowAfter = dashboard.elements.holdingsBody.locator('tr').first();
+
+    await expect(firstRowAfter).toHaveAttribute('data-symbol', 'AAPL');
+  },
+);

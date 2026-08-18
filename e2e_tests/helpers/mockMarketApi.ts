@@ -19,6 +19,7 @@ export const mockMarketApi = async (page: Page, holdings = defaultHoldings) => {
   await page.route('**/api/holdings', (route) => route.fulfill({ json: holdings }));
   await page.route('**/api/quotes**', async (route) => {
     const symbols = new URL(route.request().url()).searchParams.get('symbols')?.split(',') ?? [];
+
     await route.fulfill({ json: symbols.map(quoteFor) });
   });
   await page.route('**/api/session**', (route) => route.fulfill({ body: '', status: 204 }));

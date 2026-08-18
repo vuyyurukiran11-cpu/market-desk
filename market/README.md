@@ -13,4 +13,4 @@ Project layout:
 - `src/` — Node server and market-data modules
 - `public/` — browser application assets
 - `test/` — Node unit/API tests
-- `e2e_tests/` — standalone Playwright test repository
+- `../e2e_tests/` — standalone Playwright test repository (at repo root)
