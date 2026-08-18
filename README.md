@@ -1,6 +1,6 @@
 # Market Desk
 
-Run `npm run open`. It starts the server, opens the dashboard, and stops the server after you close the dashboard tab. Keep the terminal open while using the site.
+On Windows, run `npm run open`. It starts the server, opens the dashboard, and stops the server after you close the dashboard tab. Keep the terminal open while using the site. This command is Windows-only.
 
 On Windows, double-click `Market Desk.vbs` to start it without showing a terminal window.
 

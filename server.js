@@ -7,6 +7,8 @@ const { createSessionTracker } = require("./session-tracker");
 const publicDir = path.join(__dirname, "public");
 const sessions = createSessionTracker();
 const autoStop = process.env.AUTO_STOP === "1";
+const maxSessionIdLength = 128;
+const isLoopback = (address) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 const holdings = [
   { symbol: "AAPL", quantity: 12, costBasis: 185.20, currency: "USD" },
   { symbol: "MSFT", quantity: 6, costBasis: 412.75, currency: "USD" },
@@ -42,8 +44,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/holdings") return send(res, 200, holdings);
     if (url.pathname === "/api/session" && req.method === "POST") {
-      if (url.searchParams.get("close") === "1") sessions.remove(url.searchParams.get("id"));
-      else sessions.touch(url.searchParams.get("id"));
+      const id = url.searchParams.get("id");
+      if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
+        return send(res, 403, { error: "Session updates must come from this browser" });
+      }
+      if (!id || id.length > maxSessionIdLength) return send(res, 400, { error: "Invalid session id" });
+      if (url.searchParams.get("close") === "1") sessions.remove(id);
+      else sessions.touch(id);
       return send(res, 204, "");
     }
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Unknown API route" });

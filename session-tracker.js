@@ -1,4 +1,4 @@
-function createSessionTracker(timeoutMs = 25_000) {
+function createSessionTracker(timeoutMs = 60_000) {
   const sessions = new Map();
   let seen = false;
   return {
