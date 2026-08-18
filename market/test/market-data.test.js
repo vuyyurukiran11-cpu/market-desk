@@ -5,10 +5,11 @@ const { getChart, getQuotes, normaliseChart } = require("../src/market-data");
 test("normaliseChart keeps valid candle points and quote metadata", () => {
   const quote = normaliseChart({
     meta: { symbol: "TEST", regularMarketPrice: 12, previousClose: 10, regularMarketTime: 100, currency: "USD" },
-    timestamp: [99, 100], indicators: { quote: [{ close: [10, 12] }] }
+    timestamp: [99, 100], indicators: { quote: [{ open: [9, 11], high: [11, 13], low: [8, 10], close: [10, 12] }] }
   }, "TEST");
   assert.equal(quote.changePercent, 20);
   assert.equal(quote.points.length, 2);
+  assert.deepEqual(quote.points[0], { time: 99000, open: 9, high: 11, low: 8, close: 10 });
   assert.equal(quote.source, "Yahoo Finance prototype");
 });
 

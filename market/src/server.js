@@ -12,11 +12,26 @@ class InvalidJsonError extends Error {}
 class OversizedBodyError extends Error {}
 const isLoopback = (address) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 const decodeHoldingSymbol = (value) => { try { return decodeURIComponent(value).toUpperCase(); } catch { return null; } };
-const holdings = [
+const holdingsFile = process.env.HOLDINGS_FILE || path.join(__dirname, "..", "data", "holdings.json");
+const defaultHoldings = [
   { symbol: "AAPL", quantity: 12, purchasePrice: 185.20, currency: "USD" },
   { symbol: "MSFT", quantity: 6, purchasePrice: 412.75, currency: "USD" },
   { symbol: "XIU.TO", quantity: 20, purchasePrice: 37.18, currency: "CAD" }
 ];
+const holdings = fs.existsSync(holdingsFile) ? JSON.parse(fs.readFileSync(holdingsFile, "utf8")) : defaultHoldings;
+if (!Array.isArray(holdings)) throw new Error(`${holdingsFile} must contain a JSON array`);
+
+function saveHoldings() {
+  fs.mkdirSync(path.dirname(holdingsFile), { recursive: true });
+  const temporaryFile = `${holdingsFile}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporaryFile, `${JSON.stringify(holdings, null, 2)}\n`);
+    fs.renameSync(temporaryFile, holdingsFile);
+  } catch (error) {
+    fs.rmSync(temporaryFile, { force: true });
+    throw error;
+  }
+}
 
 const send = (res, status, body, type = "application/json; charset=utf-8") => {
   res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" });
@@ -43,7 +58,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, await getQuotes((url.searchParams.get("symbols") || "").split(",").filter(Boolean)));
     }
     if (url.pathname === "/api/chart") {
-      return send(res, 200, await getChart(url.searchParams.get("symbol") || "", url.searchParams.get("range") || "1M"));
+      return send(res, 200, await getChart(url.searchParams.get("symbol") || "", url.searchParams.get("range") || "1M", url.searchParams.get("interval")));
     }
     if (url.pathname === "/api/session" && req.method === "POST") {
       const id = url.searchParams.get("id");
@@ -69,8 +84,9 @@ const server = http.createServer(async (req, res) => {
       if (!/^[A-Z0-9.=^-]{1,20}$/.test(symbol) || !Number.isInteger(quantity) || quantity < 1 || (purchasePrice != null && (!Number.isFinite(purchasePrice) || purchasePrice < 0))) return send(res, 400, { error: "Enter a valid ticker, whole-number quantity, and non-negative purchase price" });
       if (body.currency !== undefined && !["CAD", "USD"].includes(body.currency)) return send(res, 400, { error: "Currency must be CAD or USD" });
       const existing = holdings.find((holding) => holding.symbol === symbol);
-      if (existing) { existing.quantity += quantity; return send(res, 200, existing); }
+      if (existing) { existing.quantity += quantity; saveHoldings(); return send(res, 200, existing); }
       holdings.push({ symbol, quantity, purchasePrice, currency: body.currency ?? "USD" });
+      saveHoldings();
       return send(res, 201, holdings.at(-1));
     }
     const holdingMatch = url.pathname.match(/^\/api\/holdings\/([^/]+)$/);
@@ -84,7 +100,7 @@ const server = http.createServer(async (req, res) => {
       if (!holding) return send(res, 404, { error: "Holding not found" });
       const body = await readJson(req), quantity = Number(body.quantity);
       if (!Number.isInteger(quantity) || quantity < 1 || (body.purchasePrice != null && (!Number.isFinite(Number(body.purchasePrice)) || Number(body.purchasePrice) < 0))) return send(res, 400, { error: "Holding or quantity is invalid" });
-      holding.quantity = quantity; if (body.purchasePrice !== undefined) holding.purchasePrice = body.purchasePrice === null || body.purchasePrice === "" ? null : Number(body.purchasePrice); return send(res, 200, holding);
+      holding.quantity = quantity; if (body.purchasePrice !== undefined) holding.purchasePrice = body.purchasePrice === null || body.purchasePrice === "" ? null : Number(body.purchasePrice); saveHoldings(); return send(res, 200, holding);
     }
     if (holdingMatch && req.method === "DELETE") {
       if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
@@ -93,7 +109,7 @@ const server = http.createServer(async (req, res) => {
       const symbol = decodeHoldingSymbol(holdingMatch[1]);
       if (symbol === null) return send(res, 400, { error: "Invalid holding symbol" });
       const index = holdings.findIndex((item) => item.symbol === symbol);
-      if (index < 0) return send(res, 404, { error: "Holding not found" }); holdings.splice(index, 1); return send(res, 204, "");
+      if (index < 0) return send(res, 404, { error: "Holding not found" }); holdings.splice(index, 1); saveHoldings(); return send(res, 204, "");
     }
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Unknown API route" });
     return serveFile(res, url.pathname);

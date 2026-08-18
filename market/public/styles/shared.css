@@ -1,0 +1,46 @@
+.section-heading,
+.table-heading {
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.section-heading {
+  color: var(--blue);
+  font-size: .78rem;
+}
+
+.table-heading {
+  color: var(--blue);
+  font-size: .73rem;
+}
+
+.panel > .section-heading,
+.holdings-head > .section-heading {
+  margin: 0;
+  font-size: .78rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.panel > .section-heading {
+  color: var(--blue);
+}
+
+.holdings-head > .section-heading {
+  color: var(--blue);
+}
+
+.panel > .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--line);
+}
+
+.section-heading .quote-sort {
+  color: inherit;
+  font-weight: inherit;
+}
