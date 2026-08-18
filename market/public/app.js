@@ -75,7 +75,7 @@ function dashboardTemplate() {
 }
 
 async function renderDashboard() {
-  clearInterval(quoteTimer); app.innerHTML = dashboardTemplate(); document.querySelector(".page-head")?.remove(); await loadDashboardData(); quoteTimer = setInterval(loadDashboardData, 60000);
+  clearInterval(quoteTimer); app.innerHTML = dashboardTemplate(); await loadDashboardData(); quoteTimer = setInterval(loadDashboardData, 60000);
 }
 
 async function loadDashboardData() {

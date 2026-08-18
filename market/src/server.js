@@ -11,6 +11,7 @@ const maxSessionIdLength = 128;
 class InvalidJsonError extends Error {}
 class OversizedBodyError extends Error {}
 const isLoopback = (address) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+const decodeHoldingSymbol = (value) => { try { return decodeURIComponent(value).toUpperCase(); } catch { return null; } };
 const holdings = [
   { symbol: "AAPL", quantity: 12, purchasePrice: 185.20, currency: "USD" },
   { symbol: "MSFT", quantity: 6, purchasePrice: 412.75, currency: "USD" },
@@ -55,7 +56,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 204, "");
     }
     if (url.pathname === "/api/holdings" && req.method === "GET") {
-      if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
+      if (!isLoopback(req.socket.remoteAddress) || (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`)) {
         return send(res, 403, { error: "Session updates must come from this browser" });
       }
       return send(res, 200, holdings);
@@ -77,7 +78,9 @@ const server = http.createServer(async (req, res) => {
       if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
         return send(res, 403, { error: "Session updates must come from this browser" });
       }
-      const holding = holdings.find((item) => item.symbol === decodeURIComponent(holdingMatch[1]).toUpperCase());
+      const symbol = decodeHoldingSymbol(holdingMatch[1]);
+      if (symbol === null) return send(res, 400, { error: "Invalid holding symbol" });
+      const holding = holdings.find((item) => item.symbol === symbol);
       if (!holding) return send(res, 404, { error: "Holding not found" });
       const body = await readJson(req), quantity = Number(body.quantity);
       if (!Number.isInteger(quantity) || quantity < 1 || (body.purchasePrice != null && (!Number.isFinite(Number(body.purchasePrice)) || Number(body.purchasePrice) < 0))) return send(res, 400, { error: "Holding or quantity is invalid" });
@@ -87,7 +90,9 @@ const server = http.createServer(async (req, res) => {
       if (!isLoopback(req.socket.remoteAddress) || req.headers.origin !== `http://${req.headers.host}`) {
         return send(res, 403, { error: "Session updates must come from this browser" });
       }
-      const index = holdings.findIndex((item) => item.symbol === decodeURIComponent(holdingMatch[1]).toUpperCase());
+      const symbol = decodeHoldingSymbol(holdingMatch[1]);
+      if (symbol === null) return send(res, 400, { error: "Invalid holding symbol" });
+      const index = holdings.findIndex((item) => item.symbol === symbol);
       if (index < 0) return send(res, 404, { error: "Holding not found" }); holdings.splice(index, 1); return send(res, 204, "");
     }
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Unknown API route" });

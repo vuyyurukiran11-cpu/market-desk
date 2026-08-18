@@ -3,12 +3,12 @@ const http = require("node:http");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-function request(port, path, { method = "GET", body } = {}) {
+function request(port, path, { method = "GET", body, origin = `http://127.0.0.1:${port}` } = {}) {
   return new Promise((resolve, reject) => {
     const payload = body == null ? "" : JSON.stringify(body);
     const req = http.request({
       host: "127.0.0.1", port, path, method,
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), "Origin": `http://127.0.0.1:${port}` }
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), ...(origin ? { Origin: origin } : {}) }
     }, (res) => {
       let data = "";
       res.setEncoding("utf8");
@@ -39,6 +39,8 @@ test("holdings API supports listing, validation, merge, update, and delete", asy
   const initial = await request(port, "/api/holdings");
   assert.equal(initial.status, 200);
   assert.equal(initial.body.length, 3);
+  assert.equal((await request(port, "/api/holdings", { origin: null })).status, 200);
+  assert.equal((await request(port, "/api/holdings", { origin: "http://example.test" })).status, 403);
 
   const invalid = await request(port, "/api/holdings", { method: "POST", body: { symbol: "bad symbol", quantity: 1 } });
   assert.equal(invalid.status, 400);
@@ -58,6 +60,9 @@ test("holdings API supports listing, validation, merge, update, and delete", asy
   assert.equal(updated.status, 200);
   assert.equal(updated.body.quantity, 4);
   assert.equal(updated.body.purchasePrice, null);
+
+  assert.equal((await request(port, "/api/holdings/%E0%A4%A", { method: "PATCH", body: { quantity: 1 } })).status, 400);
+  assert.equal((await request(port, "/api/holdings/%E0%A4%A", { method: "DELETE" })).status, 400);
 
   const deleted = await request(port, "/api/holdings/TSLA", { method: "DELETE" });
   assert.equal(deleted.status, 204);
