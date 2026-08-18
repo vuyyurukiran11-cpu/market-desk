@@ -16,7 +16,9 @@ test("session endpoint accepts only same-origin, valid session IDs", async (t) =
   const server = fork("server.js", [], { env: { ...process.env, PORT: "0" }, silent: true });
   t.after(() => server.kill());
   const port = await new Promise((resolve, reject) => {
+    let timer;
     const cleanup = () => {
+      clearTimeout(timer);
       server.off("message", onMessage);
       server.off("error", onError);
       server.off("exit", onExit);
@@ -32,6 +34,7 @@ test("session endpoint accepts only same-origin, valid session IDs", async (t) =
     server.on("message", onMessage);
     server.once("error", onError);
     server.once("exit", onExit);
+    timer = setTimeout(() => { cleanup(); reject(new Error("Server did not report a listening port")); }, 5_000);
   });
 
   const origin = `http://127.0.0.1:${port}`;
