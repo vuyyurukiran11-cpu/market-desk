@@ -111,6 +111,7 @@ async function renderDetail(symbol, range = "1M") {
 
 function closeSearchResults() { document.querySelector("#search-results")?.setAttribute("hidden", ""); }
 document.addEventListener("pointerdown", (event) => { if (!event.target.closest("#search-form")) closeSearchResults(); });
+document.addEventListener("focusin", (event) => { if (event.target.matches("#search") && event.target.value.trim() && document.querySelector("#search-results")?.innerHTML.trim()) document.querySelector("#search-results").hidden = false; });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSearchResults(); });
 function route() { closeSearchResults(); if (location.protocol === "file:") { app.innerHTML = `<section class="page"><div class="error"><b>Start the local server first.</b><br>Run <code>npm start</code>, then open <code>http://localhost:3000</code>. Opening this file directly cannot reach the search API.</div></section>`; return; } const match = location.hash.match(/^#\/stock\/(.+)$/); if (match) renderDetail(decodeURIComponent(match[1]).toUpperCase()); else renderDashboard(); }
 window.addEventListener("hashchange", route); route();
