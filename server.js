@@ -62,8 +62,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(process.env.PORT || 3000, () => {
-  console.log(`Stock dashboard: http://localhost:${process.env.PORT || 3000}`);
-  process.send?.({ type: "listening", port: process.env.PORT || 3000 });
+  const { port } = server.address();
+  console.log(`Stock dashboard: http://localhost:${port}`);
+  process.send?.({ type: "listening", port });
 });
 
 if (autoStop) setInterval(() => { if (sessions.seen() && !sessions.active()) server.close(); }, 5_000).unref();

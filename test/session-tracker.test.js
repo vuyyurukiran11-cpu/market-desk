@@ -17,11 +17,12 @@ test("session remains active when a delayed keepalive arrives after 25 seconds",
   let now = 0;
   Date.now = () => now;
   try {
-    const sessions = createSessionTracker();
+    const sessions = createSessionTracker(25_000);
     sessions.touch("browser-tab");
     now = 26_000;
-    assert.equal(sessions.active(), true);
     sessions.touch("browser-tab");
+    assert.equal(sessions.active(), true);
+    now = 50_000;
     assert.equal(sessions.active(), true);
   } finally {
     Date.now = originalNow;

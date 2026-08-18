@@ -1,16 +1,7 @@
 const { fork } = require("node:child_process");
 const http = require("node:http");
-const net = require("node:net");
 const test = require("node:test");
 const assert = require("node:assert/strict");
-
-const freePort = () => new Promise((resolve) => {
-  const listener = net.createServer();
-  listener.listen(0, "127.0.0.1", () => {
-    const { port } = listener.address();
-    listener.close(() => resolve(port));
-  });
-});
 
 const request = (port, path, origin) => new Promise((resolve, reject) => {
   const req = http.request({ host: "127.0.0.1", port, path, method: "POST", headers: { Origin: origin } }, (res) => {
@@ -22,10 +13,26 @@ const request = (port, path, origin) => new Promise((resolve, reject) => {
 });
 
 test("session endpoint accepts only same-origin, valid session IDs", async (t) => {
-  const port = await freePort();
-  const server = fork("server.js", [], { env: { ...process.env, PORT: String(port) }, silent: true });
+  const server = fork("server.js", [], { env: { ...process.env, PORT: "0" }, silent: true });
   t.after(() => server.kill());
-  await new Promise((resolve) => server.once("message", resolve));
+  const port = await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      server.off("message", onMessage);
+      server.off("error", onError);
+      server.off("exit", onExit);
+    };
+    const onMessage = (message) => {
+      if (message?.type === "listening" && Number.isInteger(message.port) && message.port > 0) {
+        cleanup();
+        resolve(message.port);
+      }
+    };
+    const onError = (error) => { cleanup(); reject(error); };
+    const onExit = (code, signal) => { cleanup(); reject(new Error(`Server exited before listening (code ${code}, signal ${signal})`)); };
+    server.on("message", onMessage);
+    server.once("error", onError);
+    server.once("exit", onExit);
+  });
 
   const origin = `http://127.0.0.1:${port}`;
   assert.equal(await request(port, "/api/session?id=browser-tab", origin), 204);
