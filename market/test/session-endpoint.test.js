@@ -13,7 +13,7 @@ const request = (port, path, origin) => new Promise((resolve, reject) => {
 });
 
 test("session endpoint accepts only same-origin, valid session IDs", async (t) => {
-  const server = fork("server.js", [], { env: { ...process.env, PORT: "0" }, silent: true });
+  const server = fork("src/server.js", [], { env: { ...process.env, PORT: "0" }, silent: true });
   t.after(() => server.kill());
   const port = await new Promise((resolve, reject) => {
     let timer;

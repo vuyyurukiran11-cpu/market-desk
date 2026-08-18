@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            market/package-lock.json
+            e2e_tests/package-lock.json
+
+      - name: Install application dependencies
+        working-directory: market
+        run: npm ci
+
+      - name: Install E2E dependencies
+        working-directory: e2e_tests
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: e2e_tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: e2e_tests
+        run: npm test

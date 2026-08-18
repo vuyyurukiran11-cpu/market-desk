@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normaliseChart } = require("../market-data");
+const { normaliseChart } = require("../src/market-data");
 
 test("normaliseChart keeps valid candle points and quote metadata", () => {
   const quote = normaliseChart({
