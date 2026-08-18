@@ -1,5 +1,25 @@
 const app = document.querySelector("#app");
+function ensureSignalColumn() {
+  const table = document.querySelector(".holdings table");
+  if (!table) return;
+  if (!table.querySelector("[data-signal-header]")) {
+    const header = document.createElement("th");
+    header.dataset.signalHeader = "1";
+    header.textContent = "Signal";
+    table.tHead.rows[0].append(header);
+  }
+  table.querySelectorAll("#holdings-body tr").forEach((row) => {
+    if (row.querySelector(".signal-cell")) return;
+    const cell = document.createElement("td");
+    cell.className = "signal-cell signal-hold";
+    cell.dataset.signal = "hold";
+    cell.textContent = "Hold";
+    row.append(cell);
+  });
+  table.querySelectorAll("#holdings-body td[colspan]").forEach((cell) => { cell.colSpan = 9; });
+}
 const detailObserver = new MutationObserver(() => {
+  ensureSignalColumn();
   document.querySelectorAll(".search-results [data-add-symbol]").forEach((button) => button.remove());
   const detailHead = document.querySelector(".detail-head");
   if (!detailHead || detailHead.querySelector("[data-detail-add]")) return;

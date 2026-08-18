@@ -15,6 +15,10 @@ h1,h2,.back { text-transform:capitalize; }
 .panel-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
 .panel { padding:18px 20px; }
 .detail-price [data-detail-add] { display:block; margin:10px 0 0 auto; border:1px solid var(--blue); border-radius:5px; background:var(--blue); color:white; padding:6px 10px; font:inherit; font-size:.8rem; }
+.signal-cell { font-size:.9rem; font-weight:700; text-transform:uppercase; }
+.signal-buy { color:var(--green); }
+.signal-sell { color:var(--red); }
+.signal-hold { color:var(--muted); }
 .page-head { display:none; }
 .topbar { position:relative; justify-content:center; }
 .topbar .brand { position:absolute; left:5vw; }
