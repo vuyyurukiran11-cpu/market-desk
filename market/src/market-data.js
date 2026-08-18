@@ -1,4 +1,5 @@
 const cache = new Map();
+const MAX_CACHE_ENTRIES = 100;
 const YAHOO = "https://query1.finance.yahoo.com";
 const RANGE = {
   "1D": ["1d", "5m"],
@@ -32,7 +33,9 @@ async function cached(key, ttl, load) {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < ttl) return hit.value;
   const value = await load();
+  cache.delete(key);
   cache.set(key, { at: Date.now(), value });
+  if (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
   return value;
 }
 
@@ -72,8 +75,10 @@ function normaliseChart(result, symbol) {
 
 async function getChart(rawSymbol, period = "1M") {
   const symbol = validSymbol(rawSymbol);
-  const [range, interval] = RANGE[period] || RANGE["1M"];
-  return cached(`chart:${symbol}:${period}`, 55_000, async () => {
+  const normalizedPeriod = String(period).trim().toUpperCase();
+  const canonicalPeriod = RANGE[normalizedPeriod] ? normalizedPeriod : "1M";
+  const [range, interval] = RANGE[canonicalPeriod];
+  return cached(`chart:${symbol}:${canonicalPeriod}`, 55_000, async () => {
     const payload = await fetchJson(`${YAHOO}/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`);
     const result = payload.chart?.result?.[0];
     if (!result) throw new Error(payload.chart?.error?.description || `No market data is available for ${symbol}`);
@@ -87,8 +92,8 @@ async function getQuotes(symbols) {
   return Promise.all(unique.map(async (symbol) => {
     try {
       const quote = await getChart(symbol, "1D");
-      delete quote.points;
-      return quote;
+      const { points, ...summary } = quote;
+      return summary;
     } catch (error) {
       return { symbol, error: error.message, source: "Yahoo Finance prototype", receivedAt: Date.now() };
     }

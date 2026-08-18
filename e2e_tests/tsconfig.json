@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "CommonJS",
+    "target": "ESNext",
+    "moduleResolution": "node",
+    "types": ["node", "playwright"],
+    "baseUrl": ".",
+    "paths": {
+      "@fixtures/*": ["fixtures/*"],
+      "@helpers/*": ["helpers/*"],
+      "@interfaces/*": ["interfaces/*"],
+      "@pages/*": ["pages/*"]
+    }
+  },
+  "include": [
+    "tests/**/*.ts",
+    "playwright.config.ts",
+    "fixtures/**/*.ts",
+    "helpers/**/*.ts",
+    "interfaces/**/*.ts",
+    "pages/**/*.ts"
+  ]
+}

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createSessionTracker } = require("../session-tracker");
+const { createSessionTracker } = require("../src/session-tracker");
 
 test("session tracker records and removes browser sessions", () => {
   const sessions = createSessionTracker();
