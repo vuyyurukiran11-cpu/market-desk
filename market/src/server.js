@@ -130,7 +130,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Unknown API route" });
     return serveFile(res, url.pathname);
   } catch (error) {
-    const status = error.name === "ValidationError" || error instanceof InvalidJsonError ? 400 : error instanceof OversizedBodyError ? 413 : 502;
+    const isValidationError = error.name === "ValidationError" || error.constructor.name === "ValidationError" || error instanceof InvalidJsonError;
+    const status = isValidationError ? 400 : error instanceof OversizedBodyError ? 413 : 502;
     return send(res, status, { error: error.message, source: "Yahoo Finance prototype" });
   }
 });

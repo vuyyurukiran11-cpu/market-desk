@@ -110,7 +110,8 @@
     return "";
   }
 
-  function createIndicator(type, id = `${type.toLowerCase()}-${Date.now()}`) {
+  let indicatorCounter = 0;
+  function createIndicator(type, id = `${type.toLowerCase()}-${Date.now()}-${++indicatorCounter}`) {
     if (!defaults[type]) throw new Error("Unsupported indicator");
     return { id, type, settings:{ ...defaults[type] } };
   }

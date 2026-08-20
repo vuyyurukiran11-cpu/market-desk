@@ -115,10 +115,14 @@ marketTest('keeps the candle under the pointer fixed while zooming', async ({ pa
 
   const before = await page.locator('[data-chart-values] b').textContent();
 
+  if (!before || before.trim() === '') {
+    throw new Error('Chart value is empty before zoom');
+  }
+
   await page.mouse.wheel(0, -500);
   await page.mouse.move(pointer.x + 1, pointer.y);
 
-  await expect(page.locator('[data-chart-values] b')).toHaveText(before ?? '');
+  await expect(page.locator('[data-chart-values] b')).toHaveText(before);
 });
 
 marketTest(
@@ -243,7 +247,7 @@ marketTest('rejects malformed V2 workspace fields', async ({ page }) => {
     ),
   );
   await page.goto('/#/stock/AAPL');
-  await expect(page.locator('[data-chart-theme]')).toHaveCount(0);
+  await expect(page.locator('[data-chart-type]')).toHaveValue('Candle');
   await expect(page.locator('[data-indicator-chips]')).toContainText('Volume');
   await expect(page.locator('[data-active-comparisons]')).toBeHidden();
 });
@@ -293,7 +297,7 @@ marketTest('uses the tabbed rail and persists named layouts', async ({ page }) =
     )
     .toContain('Research');
   await page.reload();
-  await expect(page.locator('[data-chart-theme]')).toHaveCount(0);
+  await expect(page.locator('[data-layout-select]')).toContainText('Research');
 });
 
 marketTest('treats closed-market quotes as final rather than stale', async ({ page }) => {
