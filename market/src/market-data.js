@@ -1,17 +1,7 @@
 const cache = new Map();
 const MAX_CACHE_ENTRIES = 100;
 const YAHOO = "https://query1.finance.yahoo.com";
-const RANGE = {
-  "1D": ["1d", "5m"],
-  "5D": ["5d", "15m"],
-  "1M": ["1mo", "1h"],
-  "3M": ["3mo", "1d"],
-  "6M": ["6mo", "1d"],
-  "YTD": ["ytd", "1d"],
-  "1Y": ["1y", "1d"],
-  "5Y": ["5y", "1wk"],
-  "ALL": ["max", "1mo"]
-};
+const { ranges: RANGE } = require("../public/chart-engine");
 
 class ValidationError extends Error {}
 
@@ -49,27 +39,47 @@ function validSymbol(symbol) {
   return value;
 }
 
+function pointSession(time, meta) {
+  const seconds = Number(time);
+  for (const [name, period] of Object.entries(meta.currentTradingPeriod || {})) {
+    if (seconds >= Number(period?.start) && seconds < Number(period?.end)) return name === "regular" ? "regular" : name === "pre" ? "pre" : "post";
+  }
+  try {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone:meta.exchangeTimezoneName || "America/New_York", weekday:"short", hour:"2-digit", minute:"2-digit", hourCycle:"h23" }).formatToParts(new Date(seconds * 1000)).map(({ type, value }) => [type, value]));
+    if (["Sat", "Sun"].includes(parts.weekday)) return "regular";
+    const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+    return minutes < 570 ? "pre" : minutes >= 960 ? "post" : "regular";
+  } catch { return "regular"; }
+}
+
 function normaliseChart(result, symbol) {
   const meta = result.meta || {};
   const quote = result.indicators?.quote?.[0] || {};
   const timestamps = result.timestamp || [];
-  const points = timestamps.map((time, index) => ({ time: time * 1000, open: quote.open?.[index], high: quote.high?.[index], low: quote.low?.[index], close: quote.close?.[index] })).filter((point) => Number.isFinite(point.close));
+  const points = timestamps.map((time, index) => ({ time: time * 1000, open: quote.open?.[index], high: quote.high?.[index], low: quote.low?.[index], close: quote.close?.[index], volume: quote.volume?.[index], session:pointSession(time, meta) })).filter((point) => Number.isFinite(point.close));
   if (!meta.symbol || !points.length) throw new Error(`No market data is available for ${symbol}`);
-  const timestamp = Number(meta.regularMarketTime || timestamps.at(-1)) * 1000;
+  const latest = points.at(-1);
+  const now = Math.floor(Date.now() / 1000);
+  const marketState = meta.marketState || Object.entries(meta.currentTradingPeriod || {}).find(([, period]) => now >= period.start && now < period.end)?.[0]?.toUpperCase() || null;
+  const timestamp = Number(meta.regularMarketTime ?? timestamps.at(-1)) * 1000;
   return {
     symbol: meta.symbol,
     name: meta.longName || meta.shortName || meta.symbol,
     currency: meta.currency || "",
     exchange: meta.fullExchangeName || meta.exchangeName || "",
-    marketState: meta.marketState || null,
-    price: meta.regularMarketPrice ?? points.at(-1).close,
+    marketState,
+    price: meta.regularMarketPrice ?? latest.close,
     previousClose: meta.previousClose ?? meta.chartPreviousClose ?? null,
     change: meta.regularMarketPrice != null && meta.previousClose != null ? meta.regularMarketPrice - meta.previousClose : null,
     changePercent: meta.regularMarketPrice != null && meta.previousClose ? ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100 : null,
-    open: meta.regularMarketOpen ?? null,
-    dayHigh: meta.regularMarketDayHigh ?? null,
-    dayLow: meta.regularMarketDayLow ?? null,
-    volume: meta.regularMarketVolume ?? null,
+    open: meta.regularMarketOpen ?? latest.open ?? null,
+    dayHigh: meta.regularMarketDayHigh ?? latest.high ?? null,
+    dayLow: meta.regularMarketDayLow ?? latest.low ?? null,
+    volume: meta.regularMarketVolume ?? result.indicators?.quote?.[0]?.volume?.at(-1) ?? null,
+    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
+    fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? null,
+    exchangeTimezone: meta.exchangeTimezoneName || meta.timezone || null,
+    instrumentType: meta.instrumentType || null,
     timestamp: Number.isFinite(timestamp) ? timestamp : null,
     receivedAt: Date.now(),
     source: "Yahoo Finance prototype",
@@ -77,19 +87,38 @@ function normaliseChart(result, symbol) {
   };
 }
 
-async function getChart(rawSymbol, period = "1M", requestedInterval = null) {
+async function getChart(rawSymbol, period = "1M", requestedInterval = null, extendedHours = false) {
   const symbol = validSymbol(rawSymbol);
   if (period === "1m" || period === "5m") { requestedInterval = period; period = "1D"; }
   const normalizedPeriod = String(period).trim().toUpperCase();
-  const canonicalPeriod = RANGE[normalizedPeriod] ? normalizedPeriod : "1M";
-  const [range, defaultInterval] = RANGE[canonicalPeriod];
+  const canonicalPeriod = Object.keys(RANGE).find((key) => key.toUpperCase() === normalizedPeriod) || "1M";
+  const { providerRange: range, defaultInterval, intervals } = RANGE[canonicalPeriod];
   const interval = requestedInterval || defaultInterval;
-  if (!["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "1wk", "1mo"].includes(interval)) throw new ValidationError("Unsupported chart interval");
-  return cached(`chart:${symbol}:${canonicalPeriod}:${interval}`, 55_000, async () => {
-    const payload = await fetchJson(`${YAHOO}/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`);
+  if (!intervals.includes(interval)) throw new ValidationError("Unsupported chart interval for this range");
+  return cached(`chart:${symbol}:${canonicalPeriod}:${interval}:${extendedHours ? 1 : 0}`, 55_000, async () => {
+    const payload = await fetchJson(`${YAHOO}/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=${extendedHours ? "true" : "false"}`);
     const result = payload.chart?.result?.[0];
     if (!result) throw new Error(payload.chart?.error?.description || `No market data is available for ${symbol}`);
     return normaliseChart(result, symbol);
+  });
+}
+
+function newsUrl(item) {
+  const candidate = item.link || item.clickThroughUrl?.url || item.canonicalUrl?.url;
+  try { const url = new URL(candidate); return ["http:", "https:"].includes(url.protocol) ? url.href : null; } catch { return null; }
+}
+
+async function getNews(rawSymbol) {
+  const symbol = validSymbol(rawSymbol);
+  return cached(`news:${symbol}`, 300_000, async () => {
+    const payload = await fetchJson(`${YAHOO}/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=1&newsCount=10`);
+    return (payload.news || []).map((item, index) => ({
+      id:String(item.uuid || `${symbol}-${item.providerPublishTime || index}`),
+      title:String(item.title || "").trim(),
+      publisher:String(item.publisher || "Yahoo Finance"),
+      publishedAt:Number.isFinite(Number(item.providerPublishTime)) ? Number(item.providerPublishTime) * 1000 : null,
+      url:newsUrl(item)
+    })).filter((item) => item.title && item.url);
   });
 }
 
@@ -121,4 +150,5 @@ async function searchSymbols(rawQuery) {
   });
 }
 
-module.exports = { getChart, getQuotes, normaliseChart, searchSymbols };
+const marketDataProvider = { getChart, getNews, getQuotes, searchSymbols };
+module.exports = { getChart, getNews, getQuotes, marketDataProvider, normaliseChart, pointSession, searchSymbols };
